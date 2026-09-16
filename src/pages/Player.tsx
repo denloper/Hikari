@@ -48,6 +48,7 @@ export function PlayerPage(props: {
   const [resumeTick, setResumeTick] = useState(0);
   const lastTime = useRef(0);
   const pipOpenRef = useRef(false);
+  const pausedRef = useRef(false);
 
   const studios = useMemo(
     () => sortTranslations(props.translations?.length ? props.translations : [props.translation], preferredStudio),
@@ -72,6 +73,24 @@ export function PlayerPage(props: {
   const title = displayName(props.anime.russian, props.anime.name);
   const meta = `${props.translation.title} · серия ${props.episode.number}`;
   const cinema = props.mode === "cinema";
+
+  const pushDiscord = useCallback(
+    (paused: boolean, position?: number, duration?: number) => {
+      pausedRef.current = paused;
+      void window.hikari.setDiscordPresence({
+        animeId: props.anime.id,
+        title,
+        episode: props.episode.number,
+        season: props.season,
+        studio: props.translation.title,
+        poster: props.anime.poster,
+        paused,
+        positionSec: position ?? lastTime.current,
+        durationSec: duration && duration > 0 ? duration : undefined
+      });
+    },
+    [props.anime.id, props.anime.poster, props.episode.number, props.season, props.translation.title, title]
+  );
   const skips = stream?.skips;
   const embedHit = stream?.kind === "embed" ? activeSkip(skips, embedTime) : null;
 
@@ -222,12 +241,19 @@ export function PlayerPage(props: {
   }, [stream, epsOpen, props.mode, pipOpen, miniW]);
 
   useEffect(() => {
-    if (!stream || stream.kind !== "embed" || !skips || pipOpen) return;
+    if (!stream || stream.kind !== "embed" || pipOpen) return;
     const id = window.setInterval(() => {
-      void window.hikari.embedGetTime().then(setEmbedTime).catch(() => undefined);
+      void window.hikari
+        .embedGetTime()
+        .then((t) => {
+          setEmbedTime(t);
+          lastTime.current = t;
+          pushDiscord(pausedRef.current, t);
+        })
+        .catch(() => undefined);
     }, 700);
     return () => window.clearInterval(id);
-  }, [stream, skips, pipOpen]);
+  }, [stream, pipOpen, pushDiscord]);
 
   useEffect(() => {
     const app = document.querySelector(".app") as HTMLElement | null;
@@ -264,8 +290,9 @@ export function PlayerPage(props: {
         positionSec: position,
         durationSec: duration
       });
+      pushDiscord(pausedRef.current, position, duration);
     },
-    [props.anime.id, props.episode.number, props.translation.id]
+    [props.anime.id, props.episode.number, props.translation.id, pushDiscord]
   );
 
   async function pickSub() {
@@ -446,17 +473,7 @@ export function PlayerPage(props: {
             onExpand={props.onExpand}
             pipOn={pipOpen}
             onTogglePip={(time) => void togglePip(time)}
-            onPaused={(paused) => {
-              void window.hikari.setDiscordPresence({
-                animeId: props.anime.id,
-                title,
-                episode: props.episode.number,
-                season: props.season,
-                studio: props.translation.title,
-                poster: props.anime.poster,
-                paused
-              });
-            }}
+            onPaused={(paused) => pushDiscord(paused)}
             onEnded={() => {
               if (nextEp) props.onChangeEpisode(nextEp);
             }}

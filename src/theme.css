@@ -117,11 +117,12 @@ select:focus-visible {
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  background: linear-gradient(145deg, #a99cff, #6d5ef0 55%, #f0c56a);
-  box-shadow: 0 8px 20px rgba(141, 124, 255, 0.35);
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #07080c;
+  box-shadow: 0 8px 20px rgba(141, 124, 255, 0.28);
 }
 
 .brand-text {

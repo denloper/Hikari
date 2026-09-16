@@ -177,7 +177,7 @@ export function App() {
         {cinema ? null : (
           <aside className="sidebar">
             <button className="brand" type="button" onClick={goHome}>
-              <span className="brand-mark" />
+              <img className="brand-mark" src="./icon.png" alt="" />
               <span className="brand-text">
                 <strong>Hikari</strong>
               </span>

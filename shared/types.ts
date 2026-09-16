@@ -47,6 +47,8 @@ export interface DiscordPresence {
   studio?: string;
   poster?: string;
   paused?: boolean;
+  positionSec?: number;
+  durationSec?: number;
 }
 
 export interface ShikiAccount {

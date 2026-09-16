@@ -295,7 +295,7 @@ const discordPosterCache = new Map<number, string>();
 const discordPosterInflight = new Map<number, Promise<string>>();
 
 function isDiscordFriendlyPoster(url: string): boolean {
-  return /anilist\.co|anilistcdn|myanimelist\.net|wsrv\.nl|weserv\.nl/.test(url);
+  return /anilist\.co|anilistcdn|myanimelist\.net|wsrv\.nl|weserv\.nl|githubusercontent|jsdelivr\.net/.test(url);
 }
 
 function proxyForDiscord(url: string): string {
