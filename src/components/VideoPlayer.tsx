@@ -7,6 +7,17 @@ import { IconDownload, IconEpisodes, IconExpand, IconNext, IconPause, IconPip, I
 import { SubtitleOverlay } from "./SubtitleOverlay";
 
 const HINT_KEY = "hikari.playerHint";
+const VOL_KEY = "hikari.volume";
+
+function readVolume(): number {
+  try {
+    const n = Number(localStorage.getItem(VOL_KEY));
+    if (Number.isFinite(n)) return Math.min(1, Math.max(0, n));
+  } catch {
+    /* нет storage */
+  }
+  return 1;
+}
 
 export function VideoPlayer(props: {
   stream: StreamResult | null;
@@ -40,7 +51,7 @@ export function VideoPlayer(props: {
   const [paused, setPaused] = useState(true);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(readVolume);
   const [fs, setFs] = useState(false);
   const [hide, setHide] = useState(false);
   const [qOpen, setQOpen] = useState(false);
@@ -106,37 +117,34 @@ export function VideoPlayer(props: {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onMeta = () => {
+    video.volume = volume;
+    const startFrom = () => {
       const key = props.resumeKey || mediaUrl;
-      if (appliedKey.current !== key) {
-        appliedKey.current = key;
-        const start = props.startAt ?? 0;
-        const dur = video.duration || 0;
-        if (dur && start && dur - start < 15) {
-          if (props.autoPlay) void video.play().catch(() => undefined);
-          return;
-        }
-        if (start) video.currentTime = start;
+      const start = appliedKey.current === key ? keepTime.current || props.startAt || 0 : props.startAt ?? 0;
+      appliedKey.current = key;
+      const dur = video.duration || 0;
+      if (dur && start && dur - start < 15) {
         if (props.autoPlay) void video.play().catch(() => undefined);
         return;
       }
-      if (keepTime.current > 1) video.currentTime = keepTime.current;
+      if (start > 1 && Math.abs(video.currentTime - start) > 0.8) {
+        video.muted = true;
+        video.currentTime = start;
+        const unmute = () => {
+          video.removeEventListener("seeked", unmute);
+          video.muted = false;
+          video.volume = volume;
+          if (props.autoPlay) void video.play().catch(() => undefined);
+        };
+        video.addEventListener("seeked", unmute, { once: true });
+        return;
+      }
+      if (props.autoPlay) void video.play().catch(() => undefined);
     };
-    video.addEventListener("loadedmetadata", onMeta, { once: true });
-    return () => video.removeEventListener("loadedmetadata", onMeta);
-  }, [mediaUrl, props.resumeKey, props.startAt, props.autoPlay]);
-
-  useEffect(() => {
-    if (!props.autoPlay) return;
-    const video = videoRef.current;
-    if (!video) return;
-    const play = () => {
-      void video.play().catch(() => undefined);
-    };
-    if (video.readyState >= 2) play();
-    video.addEventListener("canplay", play, { once: true });
-    return () => video.removeEventListener("canplay", play);
-  }, [mediaUrl, props.autoPlay, props.resumeKey]);
+    video.addEventListener("loadedmetadata", startFrom, { once: true });
+    if (video.readyState >= 1) startFrom();
+    return () => video.removeEventListener("loadedmetadata", startFrom);
+  }, [mediaUrl, props.resumeKey, props.startAt, props.autoPlay, volume]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -380,6 +388,11 @@ export function VideoPlayer(props: {
             onChange={(e) => {
               const v = Number(e.target.value);
               setVolume(v);
+              try {
+                localStorage.setItem(VOL_KEY, String(v));
+              } catch {
+                /* нет storage */
+              }
               if (videoRef.current) videoRef.current.volume = v;
             }}
           />

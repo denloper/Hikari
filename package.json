@@ -1,6 +1,6 @@
 {
   "name": "hikari",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Десктопный просмотр аниме с выбором озвучек",
   "main": "out/main/main.js",
   "author": "denloper",

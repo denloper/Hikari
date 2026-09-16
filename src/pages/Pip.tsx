@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { PipSession } from "../../shared/types";
 import { VideoPlayer } from "../components/VideoPlayer";
-import { IconClose, IconExpand, IconNext, IconPause, IconPlay } from "../components/icons";
 import { applyTheme, normalizeTheme } from "../lib/theme";
 
 export function PipPage() {
   const [session, setSession] = useState<PipSession | null>(null);
-  const [embedPaused, setEmbedPaused] = useState(false);
   const lastTime = useRef(0);
   const lastDuration = useRef(0);
 
@@ -38,24 +36,25 @@ export function PipPage() {
     return () => window.clearInterval(id);
   }, [session]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Escape" || e.code === "KeyP") {
+        e.preventDefault();
+        void window.hikari.pipCommand({ type: "return", time: lastTime.current });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function send(type: "return" | "next" | "closed") {
     void window.hikari.pipCommand({ type, time: lastTime.current });
-  }
-
-  async function toggleEmbed() {
-    const playing = await window.hikari.embedPlayPause();
-    setEmbedPaused(!playing);
   }
 
   if (!session) {
     return (
       <div className="pip-app">
-        <div className="pip-bar">
-          <strong>Hikari</strong>
-          <button className="icon-btn" type="button" onClick={() => send("closed")} title="Закрыть">
-            <IconClose />
-          </button>
-        </div>
+        <div className="pip-drag" />
         <div className="pip-body muted">Подключаю окно…</div>
       </div>
     );
@@ -65,31 +64,18 @@ export function PipPage() {
 
   return (
     <div className="pip-app">
-      <div className="pip-bar">
-        <div className="pip-title">
-          <strong>{session.title}</strong>
-          <span>{session.meta}</span>
-        </div>
-        {embed ? (
-          <button className="icon-btn" type="button" title="Пауза" onClick={() => void toggleEmbed()}>
-            {embedPaused ? <IconPlay /> : <IconPause />}
-          </button>
-        ) : null}
-        {session.hasNext ? (
-          <button className="icon-btn" type="button" title="Следующая" onClick={() => send("next")}>
-            <IconNext />
-          </button>
-        ) : null}
-        <button className="icon-btn" type="button" title="В плеер" onClick={() => send("return")}>
-          <IconExpand />
-        </button>
-        <button className="icon-btn" type="button" title="Закрыть" onClick={() => send("closed")}>
-          <IconClose />
-        </button>
-      </div>
+      <div className="pip-drag" />
       <div className="pip-body">
         {embed ? (
-          <div className="pip-embed-slot">Встроенный плеер</div>
+          <button
+            className="pip-embed-slot"
+            type="button"
+            title="Пауза · P — в плеер"
+            onClick={() => void window.hikari.embedPlayPause()}
+            onDoubleClick={() => send("return")}
+          >
+            Встроенный плеер
+          </button>
         ) : session.stream && session.stream.kind !== "embed" ? (
           <VideoPlayer
             stream={session.stream}

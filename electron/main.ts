@@ -60,10 +60,17 @@ let embedUrl = "";
 let lastPipTime = 0;
 let closingPip = false;
 let persistPipTimer: ReturnType<typeof setTimeout> | null = null;
-const PIP_CHROME = 44;
+const PIP_RATIO = 16 / 9;
+const PIP_DRAG = 12;
 
 function isDev(): boolean {
   return Boolean(process.env.ELECTRON_RENDERER_URL);
+}
+
+function nativeIcon(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "icon.ico")
+    : path.join(process.cwd(), "build", "icon.ico");
 }
 
 function createWindow(): void {
@@ -74,6 +81,7 @@ function createWindow(): void {
     minHeight: 720,
     backgroundColor: "#07080c",
     title: "Hikari",
+    icon: nativeIcon(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
@@ -219,12 +227,21 @@ function ensureEmbedView(): BrowserView | null {
   return embedView;
 }
 
+function pinPip(): void {
+  if (!pipWin || pipWin.isDestroyed()) return;
+  pipWin.setAlwaysOnTop(true, "screen-saver");
+  pipWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+}
+
 function layoutPip(): void {
   if (!pipWin || pipWin.isDestroyed() || !embedView || pipSession?.kind !== "embed") return;
   const [w, h] = pipWin.getContentSize();
-  const height = Math.max(80, h - PIP_CHROME);
-  embedView.setBounds({ x: 0, y: PIP_CHROME, width: Math.max(1, w), height });
+  const top = PIP_DRAG;
+  embedView.setBounds({ x: 0, y: top, width: Math.max(1, w), height: Math.max(80, h - top) });
   embedView.setAutoResize({ width: true, height: true });
+  void runInEmbedFrames(
+    `(function(){var v=document.querySelector("video");if(!v)return false;v.style.objectFit="contain";v.style.objectPosition="center";v.style.width="100%";v.style.height="100%";return true;})()`
+  );
 }
 
 function persistPipBounds(): void {
@@ -348,24 +365,29 @@ function openPipWindow(session: PipSession): boolean {
   if (pipWin && !pipWin.isDestroyed()) {
     attachPipMedia(session);
     sendPipSession();
-    pipWin.focus();
+    pinPip();
+    pipWin.showInactive();
     mainWindow.webContents.send("pip:changed", true);
     return true;
   }
   closingPip = false;
   const saved = loadConfig().pipBounds;
+  const startW = saved?.width ?? 480;
+  const startH = Math.round(startW / PIP_RATIO) + PIP_DRAG;
   pipWin = new BrowserWindow({
-    width: saved?.width ?? 480,
-    height: saved?.height ?? 314,
+    width: startW,
+    height: startH,
     x: saved?.x,
     y: saved?.y,
-    minWidth: 320,
-    minHeight: 220,
+    minWidth: 280,
+    minHeight: Math.round(280 / PIP_RATIO),
     alwaysOnTop: true,
     frame: false,
     show: false,
+    skipTaskbar: true,
     backgroundColor: "#07080c",
     title: "Hikari",
+    icon: nativeIcon(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
@@ -376,16 +398,21 @@ function openPipWindow(session: PipSession): boolean {
     }
   });
   lockWindow(pipWin);
+  pinPip();
+  pipWin.setAspectRatio(PIP_RATIO, { width: 0, height: PIP_DRAG });
   pipWin.on("resize", () => {
     layoutPip();
     persistPipBounds();
   });
   pipWin.on("move", persistPipBounds);
+  pipWin.on("blur", () => pinPip());
+  pipWin.on("focus", () => pinPip());
   pipWin.once("ready-to-show", () => {
     attachPipMedia(session);
     layoutPip();
     sendPipSession();
-    pipWin?.show();
+    pinPip();
+    pipWin?.showInactive();
   });
   pipWin.on("closed", () => {
     persistPipBounds();

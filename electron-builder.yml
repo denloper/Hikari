@@ -11,6 +11,9 @@ asar: true
 asarUnpack:
   - node_modules/better-sqlite3/**/*
   - node_modules/@ghostery/**/*
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
 win:
   icon: build/icon.ico
   target:

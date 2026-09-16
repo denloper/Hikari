@@ -11,6 +11,9 @@ if not exist "node_modules" (
   if errorlevel 1 exit /b 1
 )
 
+node scripts\make-icon.mjs
+if errorlevel 1 exit /b 1
+
 call npm run dist
 if errorlevel 1 (
   echo Build failed, retrying after killing Hikari.exe

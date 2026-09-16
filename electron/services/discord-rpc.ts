@@ -11,7 +11,7 @@ export const HIKARI_DISCORD_APP_ID = "1538541495949201498";
 /** Уже лежит в репозитории — Discord забирает по HTTPS, hikari:// и Шикимори не умеет. */
 export const HIKARI_DISCORD_LOGO =
   "https://wsrv.nl/?url=" +
-  encodeURIComponent("https://raw.githubusercontent.com/denloper/Hikari/main/build/icon.png?v=lantern") +
+  encodeURIComponent("https://raw.githubusercontent.com/denloper/Hikari/main/build/icon.png?v=lantern2") +
   "&w=512&h=512&fit=contain&bg=07080c&output=png";
 
 let client: Client | null = null;
