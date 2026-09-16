@@ -11,13 +11,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Skip if the tag already has a release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "%GITHUB_REF_NAME%" >nul 2>&1 (
+            echo exists=true>> "%GITHUB_OUTPUT%"
+          ) else (
+            echo exists=false>> "%GITHUB_OUTPUT%"
+          )
+        shell: cmd
       - uses: actions/checkout@v4
+        if: steps.check.outputs.exists != 'true'
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists != 'true'
         with:
           node-version: 20
       - run: npm ci
+        if: steps.check.outputs.exists != 'true'
       - run: npm run dist
+        if: steps.check.outputs.exists != 'true'
       - name: Upload GitHub Release
+        if: steps.check.outputs.exists != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
