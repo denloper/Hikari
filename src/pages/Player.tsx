@@ -99,6 +99,18 @@ export function PlayerPage(props: {
   }, [pipOpen]);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.code !== "KeyP" || !pipOpenRef.current) return;
+      e.preventDefault();
+      void window.hikari.closePip();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
     return window.hikari.onEmbedPipChange(setPipOpen);
   }, []);
 
@@ -111,11 +123,15 @@ export function PlayerPage(props: {
           translationId: props.translation.id,
           episode: props.episode.number,
           positionSec: cmd.time,
-          durationSec: 0
+          durationSec: cmd.duration && cmd.duration > 0 ? cmd.duration : 0
         });
+        if (typeof cmd.paused === "boolean") pausedRef.current = cmd.paused;
+        pushDiscord(pausedRef.current, cmd.time, cmd.duration);
         return;
       }
       if (cmd.type === "next") {
+        lastTime.current = 0;
+        setStartAt(0);
         if (nextEp) props.onChangeEpisode(nextEp);
         return;
       }
@@ -126,9 +142,10 @@ export function PlayerPage(props: {
         }
         setPipOpen(false);
         setResumeTick((n) => n + 1);
+        if (cmd.type === "return") props.onExpand();
       }
     });
-  }, [nextEp, props.anime.id, props.episode.number, props.onChangeEpisode, props.translation.id]);
+  }, [nextEp, props.anime.id, props.episode.number, props.onChangeEpisode, props.onExpand, props.translation.id, pushDiscord]);
 
   useEffect(() => {
     void window.hikari.getConfig().then((cfg) => setPreferredStudio(cfg.preferredStudio || "")).catch(() => undefined);
@@ -141,6 +158,7 @@ export function PlayerPage(props: {
   function makePipSession(next: StreamResult, time: number): PipSession {
     return {
       kind: next.kind,
+      key: `${props.anime.id}:${props.translation.id}:${props.episode.number}`,
       title,
       meta,
       hasNext: Boolean(nextEp),
@@ -160,7 +178,7 @@ export function PlayerPage(props: {
       try {
         const last = await window.hikari.getProgress(props.anime.id, props.translation.id, props.episode.number);
         if (!dead) {
-          const resume = lastTime.current > 1 && pipOpenRef.current ? lastTime.current : last?.positionSec ?? 0;
+          const resume = last?.positionSec ?? 0;
           setStartAt(resume);
           lastTime.current = resume;
         }
@@ -214,7 +232,7 @@ export function PlayerPage(props: {
   useEffect(() => {
     if (!stream) return;
     if (stream.kind !== "embed") {
-      if (!pipOpen) void window.hikari.hideEmbed();
+      void window.hikari.hideEmbed(pipOpen);
       return;
     }
     if (pipOpen) {
@@ -467,6 +485,7 @@ export function PlayerPage(props: {
             }
             downloading={dlBusy}
             resumeKey={`${props.anime.id}:${props.translation.id}:${props.episode.number}:${resumeTick}`}
+            autoPlay
             onProgress={saveProgress}
             episodesOpen={epsOpen}
             onToggleEpisodes={cinema ? togglePanel : undefined}

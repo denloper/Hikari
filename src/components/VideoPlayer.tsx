@@ -31,6 +31,8 @@ export function VideoPlayer(props: {
   pipOn?: boolean;
   onTogglePip?: (time: number) => void;
   onPaused?: (paused: boolean) => void;
+  autoPlay?: boolean;
+  expandOnClick?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -110,15 +112,31 @@ export function VideoPlayer(props: {
         appliedKey.current = key;
         const start = props.startAt ?? 0;
         const dur = video.duration || 0;
-        if (dur && start && dur - start < 15) return;
+        if (dur && start && dur - start < 15) {
+          if (props.autoPlay) void video.play().catch(() => undefined);
+          return;
+        }
         if (start) video.currentTime = start;
+        if (props.autoPlay) void video.play().catch(() => undefined);
         return;
       }
       if (keepTime.current > 1) video.currentTime = keepTime.current;
     };
     video.addEventListener("loadedmetadata", onMeta, { once: true });
     return () => video.removeEventListener("loadedmetadata", onMeta);
-  }, [mediaUrl, props.resumeKey, props.startAt]);
+  }, [mediaUrl, props.resumeKey, props.startAt, props.autoPlay]);
+
+  useEffect(() => {
+    if (!props.autoPlay) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const play = () => {
+      void video.play().catch(() => undefined);
+    };
+    if (video.readyState >= 2) play();
+    video.addEventListener("canplay", play, { once: true });
+    return () => video.removeEventListener("canplay", play);
+  }, [mediaUrl, props.autoPlay, props.resumeKey]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -131,7 +149,7 @@ export function VideoPlayer(props: {
       setTime(t);
       setDuration(d);
       const now = Date.now();
-      if (now - lastSave.current > 5000) {
+      if (now - lastSave.current > 2000) {
         lastSave.current = now;
         props.onProgress(t, d);
       }
@@ -256,7 +274,7 @@ export function VideoPlayer(props: {
   }
 
   function onShellClick() {
-    if (props.compact) {
+    if (props.compact && props.expandOnClick !== false) {
       props.onExpand?.();
       return;
     }

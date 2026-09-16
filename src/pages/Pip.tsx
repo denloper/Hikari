@@ -8,14 +8,35 @@ export function PipPage() {
   const [session, setSession] = useState<PipSession | null>(null);
   const [embedPaused, setEmbedPaused] = useState(false);
   const lastTime = useRef(0);
+  const lastDuration = useRef(0);
 
   useEffect(() => {
     void window.hikari.getConfig().then((cfg) => applyTheme(normalizeTheme(cfg.theme))).catch(() => undefined);
+    void window.hikari.getPipSession().then((next) => {
+      if (!next) return;
+      setSession(next);
+      lastTime.current = next.time;
+    });
     return window.hikari.onPipSession((next) => {
       setSession(next);
       if (next) lastTime.current = next.time;
     });
   }, []);
+
+  useEffect(() => {
+    if (!session || session.kind !== "embed") return;
+    const id = window.setInterval(() => {
+      void window.hikari
+        .embedGetTime()
+        .then((t) => {
+          if (t < 0) return;
+          lastTime.current = t;
+          void window.hikari.pipCommand({ type: "time", time: t });
+        })
+        .catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [session]);
 
   function send(type: "return" | "next" | "closed") {
     void window.hikari.pipCommand({ type, time: lastTime.current });
@@ -79,16 +100,19 @@ export function PipPage() {
             onPickSubtitle={() => undefined}
             hasNext={session.hasNext}
             onNext={() => send("next")}
-            resumeKey={`${session.title}:${session.meta}`}
+            resumeKey={session.key}
             compact
+            autoPlay
+            expandOnClick={false}
             onExpand={() => send("return")}
             onTogglePip={(time) => {
               lastTime.current = time;
               send("return");
             }}
-            onProgress={(t) => {
+            onProgress={(t, d) => {
               lastTime.current = t;
-              void window.hikari.pipCommand({ type: "time", time: t });
+              lastDuration.current = d;
+              void window.hikari.pipCommand({ type: "time", time: t, duration: d });
             }}
             onEnded={() => send("next")}
           />

@@ -79,6 +79,7 @@ export interface StreamSkips {
 
 export interface PipSession {
   kind: "hls" | "file" | "embed";
+  key: string;
   title: string;
   meta: string;
   hasNext: boolean;
@@ -92,7 +93,7 @@ export type PipCommand =
   | { type: "return"; time?: number }
   | { type: "next" }
   | { type: "closed"; time?: number }
-  | { type: "time"; time: number; paused?: boolean };
+  | { type: "time"; time: number; duration?: number; paused?: boolean };
 
 export interface CatalogGenre {
   id: number;
@@ -291,7 +292,8 @@ export interface HikariApi {
   pickSubtitleFolder: () => Promise<string | null>;
   showEmbed: (url: string, bounds: EmbedBounds) => Promise<void>;
   updateEmbedBounds: (bounds: EmbedBounds) => Promise<void>;
-  hideEmbed: () => Promise<void>;
+  hideEmbed: (keepPip?: boolean) => Promise<void>;
+  getPipSession: () => Promise<PipSession | null>;
   seekEmbed: (seconds: number) => Promise<boolean>;
   embedPlayPause: () => Promise<boolean>;
   embedGetTime: () => Promise<number>;

@@ -57,6 +57,9 @@ let embedView: BrowserView | null = null;
 let pipWin: BrowserWindow | null = null;
 let pipSession: PipSession | null = null;
 let embedUrl = "";
+let lastPipTime = 0;
+let closingPip = false;
+let persistPipTimer: ReturnType<typeof setTimeout> | null = null;
 const PIP_CHROME = 44;
 
 function isDev(): boolean {
@@ -217,29 +220,45 @@ function ensureEmbedView(): BrowserView | null {
 }
 
 function layoutPip(): void {
-  if (!pipWin || !embedView || pipSession?.kind !== "embed") return;
+  if (!pipWin || pipWin.isDestroyed() || !embedView || pipSession?.kind !== "embed") return;
   const [w, h] = pipWin.getContentSize();
-  embedView.setBounds({ x: 0, y: PIP_CHROME, width: w, height: Math.max(80, h - PIP_CHROME) });
+  const height = Math.max(80, h - PIP_CHROME);
+  embedView.setBounds({ x: 0, y: PIP_CHROME, width: Math.max(1, w), height });
+  embedView.setAutoResize({ width: true, height: true });
 }
 
 function persistPipBounds(): void {
-  if (!pipWin || pipWin.isDestroyed()) return;
-  const b = pipWin.getBounds();
-  const cfg = loadConfig();
-  saveConfig({ ...cfg, pipBounds: { x: b.x, y: b.y, width: b.width, height: b.height } });
+  if (persistPipTimer) clearTimeout(persistPipTimer);
+  persistPipTimer = setTimeout(() => {
+    persistPipTimer = null;
+    if (!pipWin || pipWin.isDestroyed()) return;
+    const b = pipWin.getBounds();
+    const cfg = loadConfig();
+    saveConfig({ ...cfg, pipBounds: { x: b.x, y: b.y, width: b.width, height: b.height } });
+  }, 400);
 }
 
 function closePip(): void {
-  if (!pipWin) return;
+  if (!pipWin || pipWin.isDestroyed()) {
+    pipWin = null;
+    pipSession = null;
+    return;
+  }
+  closingPip = true;
   persistPipBounds();
   const win = pipWin;
   pipWin = null;
   pipSession = null;
-  if (!win.isDestroyed()) win.close();
+  win.close();
 }
 
 function returnEmbedToMain(): void {
   if (!embedView || !mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    embedView.setAutoResize({ width: false, height: false });
+  } catch {
+    /* view ещё без окна */
+  }
   try {
     mainWindow.addBrowserView(embedView);
   } catch {
@@ -254,7 +273,7 @@ function sendPipSession(): void {
 }
 
 function attachPipMedia(session: PipSession): void {
-  if (!pipWin) return;
+  if (!pipWin || pipWin.isDestroyed()) return;
   if (session.kind === "embed" && embedView) {
     try {
       mainWindow?.removeBrowserView(embedView);
@@ -325,12 +344,15 @@ function rendererPipUrl(): { url?: string; file?: string } {
 function openPipWindow(session: PipSession): boolean {
   if (!mainWindow) return false;
   pipSession = session;
+  lastPipTime = session.time || lastPipTime;
   if (pipWin && !pipWin.isDestroyed()) {
     attachPipMedia(session);
     sendPipSession();
+    pipWin.focus();
     mainWindow.webContents.send("pip:changed", true);
     return true;
   }
+  closingPip = false;
   const saved = loadConfig().pipBounds;
   pipWin = new BrowserWindow({
     width: saved?.width ?? 480,
@@ -341,6 +363,7 @@ function openPipWindow(session: PipSession): boolean {
     minHeight: 220,
     alwaysOnTop: true,
     frame: false,
+    show: false,
     backgroundColor: "#07080c",
     title: "Hikari",
     autoHideMenuBar: true,
@@ -358,12 +381,21 @@ function openPipWindow(session: PipSession): boolean {
     persistPipBounds();
   });
   pipWin.on("move", persistPipBounds);
+  pipWin.once("ready-to-show", () => {
+    attachPipMedia(session);
+    layoutPip();
+    sendPipSession();
+    pipWin?.show();
+  });
   pipWin.on("closed", () => {
     persistPipBounds();
     pipWin = null;
     pipSession = null;
     returnEmbedToMain();
-    mainWindow?.webContents.send("pip:command", { type: "closed" } satisfies PipCommand);
+    if (!closingPip) {
+      mainWindow?.webContents.send("pip:command", { type: "closed", time: lastPipTime } satisfies PipCommand);
+    }
+    closingPip = false;
     mainWindow?.webContents.send("pip:changed", false);
   });
   pipWin.webContents.on("did-finish-load", () => sendPipSession());
@@ -384,6 +416,7 @@ function toggleEmbedPip(): boolean {
   }
   return openPipWindow({
     kind: "embed",
+    key: "embed",
     title: "Hikari",
     meta: "",
     hasNext: false,
@@ -392,21 +425,23 @@ function toggleEmbedPip(): boolean {
 }
 
 function handlePipCommand(cmd: PipCommand): void {
-  if (cmd.type === "return" || cmd.type === "closed") {
+  if (cmd.type === "time") {
+    lastPipTime = cmd.time;
     mainWindow?.webContents.send("pip:command", cmd);
-    if (pipWin) {
-      closePip();
-      returnEmbedToMain();
-      mainWindow?.webContents.send("pip:changed", false);
-    }
     return;
   }
   if (cmd.type === "next") {
+    lastPipTime = 0;
     mainWindow?.webContents.send("pip:command", cmd);
     return;
   }
-  if (cmd.type === "time") {
-    mainWindow?.webContents.send("pip:command", cmd);
+  if (cmd.type === "return" || cmd.type === "closed") {
+    if (typeof cmd.time === "number" && cmd.time > 0) lastPipTime = cmd.time;
+    mainWindow?.webContents.send("pip:command", { ...cmd, time: lastPipTime });
+    if (pipWin) {
+      closePip();
+      returnEmbedToMain();
+    }
   }
 }
 
@@ -418,7 +453,8 @@ function showEmbed(url: string, bounds: EmbedBounds): void {
     embedUrl = url;
     void view.webContents.loadURL(embedHref(url));
   }
-  if (pipWin) {
+  if (pipWin && pipSession?.kind === "embed") {
+    attachPipMedia(pipSession);
     layoutPip();
     return;
   }
@@ -435,12 +471,19 @@ function updateEmbedBounds(bounds: EmbedBounds): void {
   embedView?.setBounds(bounds);
 }
 
-function hideEmbed(): void {
+function hideEmbed(keepPip = false): void {
   embedUrl = "";
   const view = embedView;
   embedView = null;
-  closePip();
+  if (!keepPip) closePip();
   if (!view) return;
+  if (pipWin && !pipWin.isDestroyed()) {
+    try {
+      pipWin.removeBrowserView(view);
+    } catch {
+      /* view не в PiP */
+    }
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       mainWindow.removeBrowserView(view);
@@ -499,7 +542,8 @@ function registerIpc(): void {
 
   ipcMain.handle("embed:show", (_e, url: string, bounds: EmbedBounds) => showEmbed(url, bounds));
   ipcMain.handle("embed:bounds", (_e, bounds: EmbedBounds) => updateEmbedBounds(bounds));
-  ipcMain.handle("embed:hide", () => hideEmbed());
+  ipcMain.handle("embed:hide", (_e, keepPip?: boolean) => hideEmbed(Boolean(keepPip)));
+  ipcMain.handle("pip:getSession", () => pipSession);
   ipcMain.handle("embed:seek", (_e, sec: number) => seekEmbed(sec));
   ipcMain.handle("embed:playPause", () => embedPlayPause());
   ipcMain.handle("embed:time", () => embedGetTime());
@@ -508,9 +552,9 @@ function registerIpc(): void {
   ipcMain.handle("pip:open", () => Boolean(pipWin));
   ipcMain.handle("pip:enter", (_e, session: PipSession) => openPipWindow(session));
   ipcMain.handle("pip:close", () => {
+    mainWindow?.webContents.send("pip:command", { type: "closed", time: lastPipTime } satisfies PipCommand);
     closePip();
     returnEmbedToMain();
-    mainWindow?.webContents.send("pip:changed", false);
   });
   ipcMain.handle("pip:update", (_e, session: PipSession) => {
     pipSession = session;
