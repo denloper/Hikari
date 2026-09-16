@@ -23,7 +23,7 @@ nsis:
   allowToChangeInstallationDirectory: false
   deleteAppDataOnUninstall: false
   shortcutName: Hikari
-  artifactName: Hikari Setup ${version}.exe
+  artifactName: Hikari-Setup-${version}.exe
   uninstallDisplayName: Hikari
 electronLanguages:
   - ru

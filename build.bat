@@ -19,7 +19,7 @@ if errorlevel 1 (
   call npm run dist
 )
 
-if exist "dist\Hikari Setup *.exe" (
+if exist "dist\Hikari-Setup-*.exe" (
   echo Built installer in dist\
 ) else (
   echo Installer not found in dist\

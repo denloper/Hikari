@@ -36,7 +36,7 @@ npm install
 npm run dist
 ```
 
-Готовый файл: `dist\Hikari Setup <версия>.exe`.
+Готовый файл: `dist\Hikari-Setup-<версия>.exe`.
 
 Установленная копия сама проверяет [релизы GitHub](https://github.com/denloper/Hikari/releases) и предлагает обновиться. Для публикации: поднять `version` в `package.json`, собрать `build.bat`, затем `gh release create vX.Y.Z` с установщиком, `.blockmap` и `latest.yml`.
 

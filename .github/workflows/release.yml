@@ -24,6 +24,6 @@ jobs:
         run: |
           $ver = $env:GITHUB_REF_NAME.TrimStart("v")
           gh release create $env:GITHUB_REF_NAME --title $env:GITHUB_REF_NAME --generate-notes `
-            "dist/Hikari Setup $ver.exe" `
-            "dist/Hikari Setup $ver.exe.blockmap" `
+            "dist/Hikari-Setup-$ver.exe" `
+            "dist/Hikari-Setup-$ver.exe.blockmap" `
             "dist/latest.yml"
