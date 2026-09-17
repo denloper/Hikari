@@ -1,8 +1,9 @@
-import { app, BrowserView, BrowserWindow, ipcMain, protocol, session } from "electron";
+import { app, BrowserView, BrowserWindow, ipcMain, protocol, screen, session } from "electron";
 import path from "node:path";
-import { loadConfig, saveConfig } from "./services/config";
+import { loadConfig, normalizePipOpacity, saveConfig } from "./services/config";
 import { getAnime, getCatalogMeta, getRelated, getSchedule, listCatalog, listLatestReleases, listShikiUserList, searchAnime } from "./services/shikimori";
 import type { AppConfig, CatalogFilters, DiscordPresence, EmbedBounds, PipCommand, PipSession, ShikiListStatus } from "../shared/types";
+import { searchOpenings } from "./services/animethemes";
 import { fetchSkipTimes } from "./services/aniskip";
 import { applyDiscordConfig, setDiscordPresence, shutdownDiscordRpc, startDiscordRpc } from "./services/discord-rpc";
 import { attachUpdater, checkForAppUpdate, getUpdateState, installAppUpdate, startUpdateLoop } from "./services/updater";
@@ -60,6 +61,9 @@ let embedUrl = "";
 let lastPipTime = 0;
 let closingPip = false;
 let persistPipTimer: ReturnType<typeof setTimeout> | null = null;
+let pipHoverTimer: ReturnType<typeof setInterval> | null = null;
+let pipHot = false;
+const PIP_HUD = 52;
 const PIP_RATIO = 16 / 9;
 const PIP_DRAG = 12;
 
@@ -233,11 +237,46 @@ function pinPip(): void {
   pipWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 }
 
+function applyPipOpacity(raw?: number): void {
+  if (!pipWin || pipWin.isDestroyed()) return;
+  pipWin.setOpacity(normalizePipOpacity(raw ?? loadConfig().pipOpacity) / 100);
+}
+
+function broadcastConfig(cfg: AppConfig): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("config:changed", cfg);
+  }
+}
+
+function stopPipHoverWatch(): void {
+  if (pipHoverTimer) clearInterval(pipHoverTimer);
+  pipHoverTimer = null;
+  pipHot = false;
+}
+
+function startPipHoverWatch(): void {
+  stopPipHoverWatch();
+  pipHoverTimer = setInterval(() => {
+    if (!pipWin || pipWin.isDestroyed()) {
+      stopPipHoverWatch();
+      return;
+    }
+    const p = screen.getCursorScreenPoint();
+    const b = pipWin.getBounds();
+    const hot = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
+    if (hot === pipHot) return;
+    pipHot = hot;
+    pipWin.webContents.send("pip:hover", hot);
+    layoutPip();
+  }, 30);
+}
+
 function layoutPip(): void {
   if (!pipWin || pipWin.isDestroyed() || !embedView || pipSession?.kind !== "embed") return;
   const [w, h] = pipWin.getContentSize();
   const top = PIP_DRAG;
-  embedView.setBounds({ x: 0, y: top, width: Math.max(1, w), height: Math.max(80, h - top) });
+  const hud = pipHot ? PIP_HUD : 0;
+  embedView.setBounds({ x: 0, y: top, width: Math.max(1, w), height: Math.max(80, h - top - hud) });
   embedView.setAutoResize({ width: true, height: true });
   void runInEmbedFrames(
     `(function(){var v=document.querySelector("video");if(!v)return false;v.style.objectFit="contain";v.style.objectPosition="center";v.style.width="100%";v.style.height="100%";return true;})()`
@@ -256,6 +295,7 @@ function persistPipBounds(): void {
 }
 
 function closePip(): void {
+  stopPipHoverWatch();
   if (!pipWin || pipWin.isDestroyed()) {
     pipWin = null;
     pipSession = null;
@@ -366,6 +406,8 @@ function openPipWindow(session: PipSession): boolean {
     attachPipMedia(session);
     sendPipSession();
     pinPip();
+    applyPipOpacity();
+    startPipHoverWatch();
     pipWin.showInactive();
     mainWindow.webContents.send("pip:changed", true);
     return true;
@@ -385,6 +427,7 @@ function openPipWindow(session: PipSession): boolean {
     frame: false,
     show: false,
     skipTaskbar: true,
+    opacity: normalizePipOpacity(loadConfig().pipOpacity) / 100,
     backgroundColor: "#07080c",
     title: "Hikari",
     icon: nativeIcon(),
@@ -412,6 +455,8 @@ function openPipWindow(session: PipSession): boolean {
     layoutPip();
     sendPipSession();
     pinPip();
+    applyPipOpacity();
+    startPipHoverWatch();
     pipWin?.showInactive();
   });
   pipWin.on("closed", () => {
@@ -531,9 +576,12 @@ function registerIpc(): void {
     const next = saveConfig(cfg);
     applyAdblock();
     applyDiscordConfig();
+    applyPipOpacity(next.pipOpacity);
+    broadcastConfig(next);
     return next;
   });
 
+  ipcMain.handle("openings:search", (_e, query: string) => searchOpenings(query));
   ipcMain.handle("anime:search", (_e, query: string) => searchAnime(query));
   ipcMain.handle("anime:catalog", (_e, filters?: CatalogFilters) => listCatalog(filters));
   ipcMain.handle("anime:catalogMeta", () => getCatalogMeta());

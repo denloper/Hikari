@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { AppConfig, ShikiAccount, UpdateState } from "../../shared/types";
+import { useEffect, useRef, useState } from "react";
+import type { AppConfig, OpeningGroup, ShikiAccount, UpdateState } from "../../shared/types";
 import { IconFolder } from "../components/icons";
 import { STUDIO_PRESETS, studiosMatch } from "../lib/studio";
 
@@ -22,6 +22,12 @@ export function SettingsPage(props: { onOpenTheme?: () => void }) {
   const [code, setCode] = useState("");
   const [appVersion, setAppVersion] = useState("");
   const [update, setUpdate] = useState<UpdateState>({ status: "idle" });
+  const opacityTimer = useRef(0);
+  const searchTimer = useRef(0);
+  const [opQuery, setOpQuery] = useState("");
+  const [opGroups, setOpGroups] = useState<OpeningGroup[]>([]);
+  const [opBusy, setOpBusy] = useState(false);
+  const [opErr, setOpErr] = useState("");
 
   useEffect(() => {
     void window.hikari.getConfig().then(setCfg);
@@ -158,27 +164,153 @@ export function SettingsPage(props: { onOpenTheme?: () => void }) {
           {loginErr ? <p className="error">{loginErr}</p> : null}
         </section>
         <section className="settings-card">
-          <h3>Источники</h3>
-          <div className="field">
-            <label>Токен Kodik</label>
-            <p className="hint">
-              Без токена: AniLibria, AnimeVost, Студийная банда, Dreamerscast и студии из YummyAnime. Kodik — кабинет
-              kodikapi.com.
-            </p>
-            <input
-              type="password"
-              value={cfg.kodikToken}
-              onChange={(e) => setCfg({ ...cfg, kodikToken: e.target.value })}
-              placeholder="не задан"
-            />
-          </div>
-        </section>
-        <section className="settings-card">
           <h3>Оформление</h3>
           <p className="hint">Тёмная и светлая тема, свой акцент и насыщенность — как палитра в Discord.</p>
           <button className="primary" type="button" onClick={() => props.onOpenTheme?.()}>
             Настроить тему
           </button>
+        </section>
+        <section className="settings-card">
+          <h3>Картинка в картинке</h3>
+          <div className="field">
+            <label>Прозрачность окна</label>
+            <p className="hint">Действует сразу на открытый PiP. 0% — обычное окно, 80% — почти стекло.</p>
+            <div className="range-row">
+              <input
+                type="range"
+                min={0}
+                max={80}
+                step={1}
+                value={100 - (cfg.pipOpacity ?? 100)}
+                onChange={(e) => {
+                  const pipOpacity = Math.min(100, Math.max(20, 100 - (Number(e.target.value) || 0)));
+                  setCfg({ ...cfg, pipOpacity });
+                  window.clearTimeout(opacityTimer.current);
+                  opacityTimer.current = window.setTimeout(() => {
+                    void window.hikari.getConfig().then((disk) => window.hikari.saveConfig({ ...disk, pipOpacity }));
+                  }, 200);
+                }}
+              />
+              <span>{100 - (cfg.pipOpacity ?? 100)}%</span>
+            </div>
+          </div>
+          <div className="field">
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={cfg.pipSkipButtons !== false}
+                onChange={(e) => {
+                  const pipSkipButtons = e.target.checked;
+                  setCfg({ ...cfg, pipSkipButtons });
+                  void window.hikari.getConfig().then((disk) => window.hikari.saveConfig({ ...disk, pipSkipButtons }));
+                }}
+              />
+              Скип на 10 секунд (−10 / +10)
+            </label>
+            <p className="hint">Кнопки в PiP при наведении. Стрелки клавиатуры делают то же самое.</p>
+          </div>
+        </section>
+        <section className="settings-card">
+          <h3>Фоновый опенинг</h3>
+          <div className="field">
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={cfg.ambientOpEnabled}
+                onChange={(e) => {
+                  const ambientOpEnabled = e.target.checked;
+                  setCfg({ ...cfg, ambientOpEnabled });
+                  void window.hikari.getConfig().then((disk) => window.hikari.saveConfig({ ...disk, ambientOpEnabled }));
+                }}
+              />
+              Играть опенинг в фоне
+            </label>
+            <p className="hint">Пока смотрите серию — опенинга нет. Источник: AnimeThemes.</p>
+          </div>
+          <div className="field">
+            <label>Найти опенинг</label>
+            <input
+              value={opQuery}
+              onChange={(e) => {
+                const q = e.target.value;
+                setOpQuery(q);
+                window.clearTimeout(searchTimer.current);
+                if (q.trim().length < 2) {
+                  setOpGroups([]);
+                  setOpErr("");
+                  return;
+                }
+                searchTimer.current = window.setTimeout(() => {
+                  setOpBusy(true);
+                  setOpErr("");
+                  void window.hikari
+                    .searchOpenings(q.trim())
+                    .then((groups) => {
+                      setOpGroups(groups);
+                      if (!groups.length) setOpErr("Не нашёл опенинг с аудио.");
+                    })
+                    .catch(() => setOpErr("AnimeThemes не ответил."))
+                    .finally(() => setOpBusy(false));
+                }, 400);
+              }}
+              placeholder="название тайтла, например Frieren"
+            />
+            {opBusy ? <p className="hint">Ищу…</p> : null}
+            {opErr ? <p className="hint">{opErr}</p> : null}
+            <div className="op-results">
+              {opGroups.map((group) => (
+                <div key={group.animeTitle} className="op-group">
+                  <strong>{group.animeTitle}</strong>
+                  <div className="op-list">
+                    {group.tracks.map((track) => (
+                      <button
+                        key={track.id}
+                        className={`chip${cfg.ambientOpUrl === track.audioUrl ? " active" : ""}`}
+                        type="button"
+                        onClick={() => {
+                          const patch = {
+                            ambientOpEnabled: true,
+                            ambientOpTitle: track.animeTitle,
+                            ambientOpLabel: track.label,
+                            ambientOpUrl: track.audioUrl
+                          };
+                          setCfg({ ...cfg, ...patch });
+                          void window.hikari.getConfig().then((disk) => window.hikari.saveConfig({ ...disk, ...patch }));
+                        }}
+                      >
+                        {track.label}
+                        {track.song ? ` · ${track.song}` : ""}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {cfg.ambientOpTitle ? (
+              <p className="hint">
+                Сейчас: {cfg.ambientOpTitle}
+                {cfg.ambientOpLabel ? ` — ${cfg.ambientOpLabel}` : ""}
+              </p>
+            ) : null}
+          </div>
+          <div className="field">
+            <label>Громкость</label>
+            <div className="range-row">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cfg.ambientOpVolume ?? 35}
+                onChange={(e) => {
+                  const ambientOpVolume = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                  setCfg({ ...cfg, ambientOpVolume });
+                  void window.hikari.getConfig().then((disk) => window.hikari.saveConfig({ ...disk, ambientOpVolume }));
+                }}
+              />
+              <span>{cfg.ambientOpVolume ?? 35}%</span>
+            </div>
+          </div>
         </section>
         <section className="settings-card">
           <h3>Discord</h3>

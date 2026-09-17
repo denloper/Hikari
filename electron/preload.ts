@@ -16,6 +16,14 @@ import type {
 const api: HikariApi = {
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (cfg: AppConfig) => ipcRenderer.invoke("config:save", cfg),
+  onConfigChanged: (cb) => {
+    const fn = (_e: unknown, cfg: AppConfig) => cb(cfg);
+    ipcRenderer.on("config:changed", fn);
+    return () => {
+      ipcRenderer.removeListener("config:changed", fn);
+    };
+  },
+  searchOpenings: (query: string) => ipcRenderer.invoke("openings:search", query),
   searchAnime: (query: string) => ipcRenderer.invoke("anime:search", query),
   listCatalog: (filters?: CatalogFilters) => ipcRenderer.invoke("anime:catalog", filters),
   getCatalogMeta: () => ipcRenderer.invoke("anime:catalogMeta"),
@@ -71,6 +79,13 @@ const api: HikariApi = {
     ipcRenderer.on("pip:session", fn);
     return () => {
       ipcRenderer.removeListener("pip:session", fn);
+    };
+  },
+  onPipHover: (cb) => {
+    const fn = (_e: unknown, hot: boolean) => cb(hot);
+    ipcRenderer.on("pip:hover", fn);
+    return () => {
+      ipcRenderer.removeListener("pip:hover", fn);
     };
   },
   shikiLogin: () => ipcRenderer.invoke("shiki:login"),

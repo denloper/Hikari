@@ -38,6 +38,8 @@ export function VideoPlayer(props: {
   episodesOpen?: boolean;
   onToggleEpisodes?: () => void;
   compact?: boolean;
+  hovered?: boolean;
+  showSkip10?: boolean;
   onExpand?: () => void;
   pipOn?: boolean;
   onTogglePip?: (time: number) => void;
@@ -53,7 +55,7 @@ export function VideoPlayer(props: {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(readVolume);
   const [fs, setFs] = useState(false);
-  const [hide, setHide] = useState(false);
+  const [hide, setHide] = useState(() => Boolean(props.compact));
   const [qOpen, setQOpen] = useState(false);
   const [nativePip, setNativePip] = useState(false);
   const [hint, setHint] = useState(() => {
@@ -251,12 +253,37 @@ export function VideoPlayer(props: {
   }
 
   function bumpHide() {
+    if (props.compact) return;
     setHide(false);
     window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
       setHide(true);
       setQOpen(false);
     }, 2500);
+  }
+
+  useEffect(() => {
+    if (!props.compact) return;
+    setHide(!props.hovered);
+    if (!props.hovered) setQOpen(false);
+  }, [props.compact, props.hovered]);
+
+  useEffect(() => {
+    if (!props.compact) return;
+    const onSeek = (e: Event) => {
+      const delta = Number((e as CustomEvent<number>).detail);
+      const video = videoRef.current;
+      if (!video || !Number.isFinite(delta)) return;
+      video.currentTime = Math.max(0, video.currentTime + delta);
+    };
+    window.addEventListener("hikari-pip-seek", onSeek);
+    return () => window.removeEventListener("hikari-pip-seek", onSeek);
+  }, [props.compact]);
+
+  function skipBy(delta: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.max(0, video.currentTime + delta);
   }
 
   function togglePlay() {
@@ -356,7 +383,7 @@ export function VideoPlayer(props: {
           <div>{props.loading ? "Подключаю поток…" : "Нет потока"}</div>
         </div>
       ) : null}
-      <div className={`controls ${hide && !paused ? "hidden" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`controls ${(props.compact ? hide : hide && !paused) ? "hidden" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="row">
           <input
             type="range"
@@ -372,12 +399,25 @@ export function VideoPlayer(props: {
           />
         </div>
         <div className="row">
+          {props.compact && props.showSkip10 ? (
+            <button className="icon-btn" type="button" title="Назад 10 сек" onClick={() => skipBy(-10)}>
+              −10
+            </button>
+          ) : null}
           <button className="icon-btn" type="button" onClick={togglePlay} title="Пробел">
             {paused ? <IconPlay /> : <IconPause />}
           </button>
-          <span className="muted">
-            {formatTime(time)} / {formatTime(duration)}
-          </span>
+          {props.compact && props.showSkip10 ? (
+            <button className="icon-btn" type="button" title="Вперёд 10 сек" onClick={() => skipBy(10)}>
+              +10
+            </button>
+          ) : null}
+          {props.compact ? null : (
+            <span className="muted">
+              {formatTime(time)} / {formatTime(duration)}
+            </span>
+          )}
+          {props.compact ? null : (
           <input
             className="vol"
             type="range"
@@ -396,7 +436,8 @@ export function VideoPlayer(props: {
               if (videoRef.current) videoRef.current.volume = v;
             }}
           />
-          {qualities.length ? (
+          )}
+          {qualities.length && !props.compact ? (
             <div className="menu-wrap">
               <button className="icon-btn" type="button" onClick={() => setQOpen((v) => !v)}>
                 {props.quality || qualities[0]?.height}p
@@ -436,9 +477,11 @@ export function VideoPlayer(props: {
               OP
             </button>
           ) : null}
+          {props.compact ? null : (
           <button className="icon-btn" type="button" title="Субтитры" onClick={props.onPickSubtitle}>
             <IconSubtitles />
           </button>
+          )}
           {props.onToggleEpisodes ? (
             <button
               className={`icon-btn ${props.episodesOpen ? "on" : ""}`}
@@ -449,8 +492,8 @@ export function VideoPlayer(props: {
               <IconEpisodes />
             </button>
           ) : null}
-          {props.hasNext && !props.compact ? (
-            <button className="icon-btn" type="button" onClick={props.onNext} title="N — следующая">
+          {props.hasNext ? (
+            <button className="icon-btn" type="button" onClick={props.onNext} title="Следующая серия · N">
               <IconNext />
             </button>
           ) : null}

@@ -26,7 +26,30 @@ export interface AppConfig {
   preferredStudio: string;
   theme: ThemeSettings;
   pipBounds?: PipBounds;
+  /** Непрозрачность окна PiP, 20–100. */
+  pipOpacity: number;
+  /** Кнопки −10 / +10 сек в PiP. */
+  pipSkipButtons: boolean;
+  ambientOpEnabled: boolean;
+  ambientOpTitle: string;
+  ambientOpLabel: string;
+  ambientOpUrl: string;
+  /** Громкость фонового опенинга, 0–100. */
+  ambientOpVolume: number;
   discordRpc: boolean;
+}
+
+export interface OpeningTrack {
+  id: string;
+  animeTitle: string;
+  label: string;
+  song: string;
+  audioUrl: string;
+}
+
+export interface OpeningGroup {
+  animeTitle: string;
+  tracks: OpeningTrack[];
 }
 
 export type UpdateStatus = "idle" | "checking" | "available" | "none" | "downloading" | "ready" | "error";
@@ -264,6 +287,8 @@ export interface EmbedBounds {
 export interface HikariApi {
   getConfig: () => Promise<AppConfig>;
   saveConfig: (cfg: AppConfig) => Promise<AppConfig>;
+  onConfigChanged: (cb: (cfg: AppConfig) => void) => () => void;
+  searchOpenings: (query: string) => Promise<OpeningGroup[]>;
   searchAnime: (query: string) => Promise<AnimeCard[]>;
   listCatalog: (filters?: CatalogFilters) => Promise<AnimeCard[]>;
   getCatalogMeta: () => Promise<CatalogMeta>;
@@ -307,6 +332,7 @@ export interface HikariApi {
   onEmbedPipChange: (cb: (open: boolean) => void) => () => void;
   onPipCommand: (cb: (cmd: PipCommand) => void) => () => void;
   onPipSession: (cb: (session: PipSession | null) => void) => () => void;
+  onPipHover: (cb: (hot: boolean) => void) => () => void;
   shikiLogin: () => Promise<ShikiAccount>;
   shikiLoginWithCode: (code: string) => Promise<ShikiAccount>;
   shikiLogout: () => Promise<void>;

@@ -21,6 +21,13 @@ const DEFAULTS: AppConfig = {
   episodeNotify: true,
   preferredStudio: "",
   theme: { ...DEFAULT_THEME, swatches: [...DEFAULT_THEME.swatches] },
+  pipOpacity: 100,
+  pipSkipButtons: true,
+  ambientOpEnabled: false,
+  ambientOpTitle: "",
+  ambientOpLabel: "",
+  ambientOpUrl: "",
+  ambientOpVolume: 35,
   discordRpc: true
 };
 
@@ -50,6 +57,18 @@ function normalizeTheme(raw?: Partial<ThemeSettings>): ThemeSettings {
   };
 }
 
+export function normalizePipOpacity(raw?: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULTS.pipOpacity;
+  return Math.min(100, Math.max(20, Math.round(n)));
+}
+
+function normalizeVolume(raw?: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULTS.ambientOpVolume;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
 function normalizeBounds(raw?: PipBounds): PipBounds | undefined {
   if (!raw) return undefined;
   const x = Number(raw.x);
@@ -74,6 +93,13 @@ export function loadConfig(): AppConfig {
     preferredStudio: String(parsed.preferredStudio ?? "").trim(),
     theme: normalizeTheme(parsed.theme),
     pipBounds: normalizeBounds(parsed.pipBounds),
+    pipOpacity: normalizePipOpacity(parsed.pipOpacity),
+    pipSkipButtons: parsed.pipSkipButtons !== false,
+    ambientOpEnabled: parsed.ambientOpEnabled === true,
+    ambientOpTitle: String(parsed.ambientOpTitle ?? "").trim(),
+    ambientOpLabel: String(parsed.ambientOpLabel ?? "").trim(),
+    ambientOpUrl: String(parsed.ambientOpUrl ?? "").trim(),
+    ambientOpVolume: normalizeVolume(parsed.ambientOpVolume),
     discordRpc: parsed.discordRpc !== false
   };
   if ("anime365Token" in parsed) saveConfig(cfg);
@@ -96,6 +122,13 @@ export function saveConfig(next: AppConfig): AppConfig {
     preferredStudio: String(next.preferredStudio ?? "").trim(),
     theme: normalizeTheme(next.theme ?? prev.theme),
     pipBounds: normalizeBounds(next.pipBounds) ?? normalizeBounds(prev.pipBounds),
+    pipOpacity: normalizePipOpacity(next.pipOpacity ?? prev.pipOpacity),
+    pipSkipButtons: next.pipSkipButtons !== false,
+    ambientOpEnabled: next.ambientOpEnabled === true,
+    ambientOpTitle: String(next.ambientOpTitle ?? prev.ambientOpTitle ?? "").trim(),
+    ambientOpLabel: String(next.ambientOpLabel ?? prev.ambientOpLabel ?? "").trim(),
+    ambientOpUrl: String(next.ambientOpUrl ?? prev.ambientOpUrl ?? "").trim(),
+    ambientOpVolume: normalizeVolume(next.ambientOpVolume ?? prev.ambientOpVolume),
     discordRpc: next.discordRpc !== false
   };
   fs.writeFileSync(configPath(), JSON.stringify(clean, null, 2), "utf8");

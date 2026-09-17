@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AnimeTitle, CatalogGenre, ContinueItem, EpisodeRef, ShikiAccount, Translation, UpdateState } from "../shared/types";
 import { displayName } from "./lib/format";
 import { pickTranslation } from "./lib/studio";
+import { AmbientOpening } from "./components/AmbientOpening";
 import { ThemeModal } from "./components/ThemeModal";
 import { IconLibrary, IconLive, IconSearch, IconSettings, IconTheme, IconUser } from "./components/icons";
 import { applyTheme, normalizeTheme } from "./lib/theme";
@@ -284,6 +285,7 @@ export function App() {
           ) : null}
         </main>
       </div>
+      <AmbientOpening duck={Boolean(play)} />
       <ThemeModal open={themeOpen} onClose={() => setThemeOpen(false)} />
     </div>
   );
